@@ -39,9 +39,9 @@ proc contains*(self: HandleManager; handle: uint): bool =
     while i < self.nodes.len.uint:
         let here = self.nodes[i]
         if here.width < 1: break
-        if handle in here: return false
-        if handle < here.low: i  = left(i)
-        if handle > here.high: i = right(i)
+        elif handle < here.low: i  = left(i)
+        elif handle > here.high: i = right(i)
+        else: return false
     return true
 
 proc needs_open*(self: HandleManager): bool {.inline.} =
@@ -51,6 +51,46 @@ proc needs_open*(self: HandleManager): bool {.inline.} =
 proc maybe_open*(self: var HandleManager) {.inline.} =
     ## Opens the manager, but only if needed.
     if self.needs_open: self.open()
+
+proc lift(self: var HandleManager; index: uint) =
+    let looft = left(index)
+    let rooft = right(index)
+
+    if self.nodes[index].width == 0:
+        return
+    elif (looft.int >= self.nodes.len) or (self.nodes[looft].width == 0):
+        # left side is dead, so rotate right and done
+        self.nodes[index] = self.nodes[rooft]
+        self.lift(rooft)
+    elif (rooft.int >= self.nodes.len) or (self.nodes[rooft].width == 0):
+        # right side is dead, so rotate left and done
+        self.nodes[index] = self.nodes[looft]
+        self.lift(looft)
+    else:
+        # both sides are alive so just pick one
+        self.nodes[index] = self.nodes[looft]
+        self.lift(looft)
+
+proc compact(self: var HandleManager; index: uint) =
+    ## Attempts to join leaves with their parent. `index` is the parent.
+    ## Leaves are joinable when their high and low values can be joined
+    ## in to a single contiguous span without holes.
+    let looft = left(index)
+    let rooft = right(index)
+
+    if (looft < self.nodes.len.uint) and (self.nodes[looft].width > 0):
+        self.compact(looft)
+        if self.nodes[looft].high == self.nodes[index].low:
+            # fold that node in to ourselves and lift underlings
+            self.nodes[index].low = self.nodes[looft].low
+            self.lift(looft)
+
+    if (rooft < self.nodes.len.uint) and (self.nodes[rooft].width > 0):
+        self.compact(rooft)
+        if self.nodes[rooft].low == self.nodes[index].high:
+            # fold that node in to ourselves and lift underlings
+            self.nodes[index].high = self.nodes[rooft].high
+            self.lift(rooft)
 
 proc take*(self: var HandleManager): uint =
     ## Takes an unallocated handle from the manager.
@@ -87,12 +127,12 @@ proc give*(self: var HandleManager; handle: uint) =
         elif handle == here.high:
             # join on right side
             inc here.high
-            # TODO recursively roll up nodes on right side
+            self.compact(i)
             return
         elif handle == (here.low - 1):
             # join on left side
             dec here.low
-            # TODO recursively roll up nodes on left side
+            self.compact(i)
             return
         else:
             # "Let's go deeper. We gotta go deeper." -- MC Hammer
@@ -114,5 +154,17 @@ when ismainmodule:
     assert 2 notin x
     assert x.take() == 2
     assert 2 in x
+    assert 3 notin x
+    assert x.take() == 3
+    assert 3 in x
     x.give(1)
     assert x.take() == 1
+    echo x
+    x.give(0)
+    echo x
+    x.give(2)
+    echo x
+    x.give(1)
+    echo x
+    x.give(3)
+    echo x
