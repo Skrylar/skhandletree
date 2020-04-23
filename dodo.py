@@ -9,6 +9,9 @@ def task_build():
 def task_check():
     return {
     	'task_dep': ['build'],
-    	'actions': ['timeout 5 ./skhandletree'],
+    	'actions': [
+            'timeout 5 ./skhandletree | tee dump.dot',
+            'gvpack -u dump.dot > packed.dot',
+            'dot -Tpng packed.dot > dump.png'],
     	'verbosity': 2,
     }

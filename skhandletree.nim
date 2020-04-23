@@ -38,9 +38,9 @@ proc contains*(self: HandleManager; handle: uint): bool =
     var i = 0'u
     while i < self.nodes.len.uint:
         let here = self.nodes[i]
-        if here.width < 1: break
-        elif handle < here.low: i  = left(i)
-        elif handle > here.high: i = right(i)
+        if here.width == 0: break
+        elif handle < here.low:   i = left(i)
+        elif handle >= here.high: i = right(i)
         else: return false
     return true
 
@@ -56,8 +56,15 @@ proc lift(self: var HandleManager; index: uint) =
     let looft = left(index)
     let rooft = right(index)
 
+    if index >= self.nodes.len.uint: return
+
     if self.nodes[index].width == 0:
         return
+    elif ((looft.int >= self.nodes.len) or (self.nodes[looft].width == 0) and
+        (rooft.int >= self.nodes.len) or (self.nodes[rooft].width == 0)):
+            # both sides are dead
+            self.nodes[index].high = 0
+            self.nodes[index].low  = 0
     elif (looft.int >= self.nodes.len) or (self.nodes[looft].width == 0):
         # left side is dead, so rotate right and done
         self.nodes[index] = self.nodes[rooft]
@@ -77,6 +84,8 @@ proc compact(self: var HandleManager; index: uint) =
     ## in to a single contiguous span without holes.
     let looft = left(index)
     let rooft = right(index)
+
+    if index >= self.nodes.len.uint: return
 
     if (looft < self.nodes.len.uint) and (self.nodes[looft].width > 0):
         self.compact(looft)
@@ -143,6 +152,22 @@ proc give*(self: var HandleManager; handle: uint) =
             if i.int >= self.nodes.len:
                 self.nodes.set_len(i+1)
 
+proc dump_dot*(self: HandleManager) =
+    echo "digraph dump {"
+    echo "node [shape=record]"
+    for i in 0..<self.nodes.len:
+        let looft = left(i.uint).int
+        let rooft = right(i.uint).int
+
+        if self.nodes[i].width > 0:
+            echo "node", i, " [label=\"<hi> ", self.nodes[i].high, " |<lo> ", self.nodes[i].low, "\"];"
+
+            if (looft < self.nodes.len) and self.nodes[looft].width > 0:
+                echo "node", i, ":lo -> ", "node", looft
+            if (rooft < self.nodes.len) and self.nodes[rooft].width > 0:
+                echo "node", i, ":hi -> ", "node", rooft
+    echo "}"
+
 when ismainmodule:
     var x = HandleManager()
     assert 0 notin x
@@ -159,12 +184,22 @@ when ismainmodule:
     assert 3 in x
     x.give(1)
     assert x.take() == 1
-    echo x
+
+    assert 0 in x
+    assert 1 in x
+    assert 2 in x
+    assert 3 in x
+
+    x.dump_dot
     x.give(0)
-    echo x
+    x.dump_dot
     x.give(2)
-    echo x
+    x.dump_dot
+
+    assert 1 in x
+    assert 3 in x
+
     x.give(1)
-    echo x
+    x.dump_dot
     x.give(3)
-    echo x
+    x.dump_dot
